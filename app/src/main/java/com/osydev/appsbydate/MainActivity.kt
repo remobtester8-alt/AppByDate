@@ -1,6 +1,8 @@
 package com.osydev.appsbydate
 
 import android.app.Activity
+import android.app.AlertDialog
+import rikka.shizuku.Shizuku
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -91,7 +93,8 @@ class MainActivity : Activity() {
             updateSelectionBar()
         }
 
-        deleteSelectedBtn.setOnClickListener { startBatchUninstall() }
+        deleteSelectedBtn.setOnClickListener { onDeleteSelectedPressed() }
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
         findViewById<Button>(R.id.clear_selection).setOnClickListener {
             selected.clear()
             adapter.notifyDataSetChanged()
@@ -106,6 +109,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
         executor.shutdownNow()
         super.onDestroy()
     }
@@ -196,7 +200,135 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Several apps: open the system uninstall dialog for each one, one after another. */
+    // ---------- Bulk delete ----------
+
+    /** "Delete selected" pressed: one confirmation, then remove everything ticked. */
+    private fun onDeleteSelectedPressed() {
+        if (selected.isEmpty() || bulkRunning) return
+        when (shizukuState()) {
+            ShizukuState.READY -> confirmAndDeleteSilently()
+            ShizukuState.NO_PERMISSION -> {
+                pendingDeleteAfterPermission = true
+                Shizuku.requestPermission(REQ_SHIZUKU)
+            }
+            ShizukuState.OFF -> {
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.shizuku_off_title)
+                    .setMessage(R.string.shizuku_off_msg)
+                    .setPositiveButton(R.string.continue_anyway) { _, _ -> startBatchUninstall() }
+                    .setNeutralButton(R.string.get_shizuku) { _, _ -> openShizukuInStore() }
+                    .setNegativeButton(R.string.cancel, null)
+                    .show()
+            }
+        }
+    }
+
+    private enum class ShizukuState { READY, NO_PERMISSION, OFF }
+
+    private fun shizukuState(): ShizukuState = try {
+        when {
+            !Shizuku.pingBinder() -> ShizukuState.OFF
+            Shizuku.isPreV11() -> ShizukuState.OFF
+            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED -> ShizukuState.READY
+            else -> ShizukuState.NO_PERMISSION
+        }
+    } catch (t: Throwable) {
+        ShizukuState.OFF
+    }
+
+    private val shizukuPermissionListener =
+        Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+            if (requestCode != REQ_SHIZUKU) return@OnRequestPermissionResultListener
+            mainHandler.post {
+                val wanted = pendingDeleteAfterPermission
+                pendingDeleteAfterPermission = false
+                if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                    if (wanted) confirmAndDeleteSilently()
+                } else {
+                    Toast.makeText(this, R.string.shizuku_denied, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    private var pendingDeleteAfterPermission = false
+    private var bulkRunning = false
+
+    private fun confirmAndDeleteSilently() {
+        val apps = adapter.items.filter { it.packageName in selected }
+        if (apps.isEmpty()) return
+        val names = apps.joinToString("\n") { "• ${it.label}" }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.confirm_title, apps.size))
+            .setMessage(names)
+            .setPositiveButton(R.string.confirm_delete) { _, _ -> deleteSilently(apps) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun deleteSilently(apps: List<AppEntry>) {
+        bulkRunning = true
+        progress.visibility = View.VISIBLE
+        deleteSelectedBtn.isEnabled = false
+        title = getString(R.string.deleting)
+        executor.execute {
+            var ok = 0
+            var failed = 0
+            for (app in apps) {
+                val success = runCatching { shizukuUninstall(app.packageName) }.getOrDefault(false)
+                if (success) ok++ else failed++
+            }
+            mainHandler.post {
+                if (isFinishing) return@post
+                bulkRunning = false
+                deleteSelectedBtn.isEnabled = true
+                Toast.makeText(this, getString(R.string.batch_result, ok, failed), Toast.LENGTH_LONG).show()
+                loadApps()
+            }
+        }
+    }
+
+    /** Runs `pm uninstall <pkg>` with shell (ADB) rights through Shizuku. */
+    private fun shizukuUninstall(pkg: String): Boolean {
+        // Shizuku.newProcess is not public in API 13, so call it reflectively (common practice).
+        val method = Shizuku::class.java.getDeclaredMethod(
+            "newProcess",
+            Array<String>::class.java,
+            Array<String>::class.java,
+            String::class.java,
+        )
+        method.isAccessible = true
+        val process = method.invoke(null, arrayOf("pm", "uninstall", pkg), null, null) as Process
+        val out = process.inputStream.bufferedReader().use { it.readText() }
+        process.errorStream.bufferedReader().use { it.readText() }
+        process.waitFor()
+        return out.contains("Success")
+    }
+
+    private fun openShizukuInStore() {
+        val id = "moe.shizuku.privileged.api"
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$id")))
+        } catch (e: ActivityNotFoundException) {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$id")))
+        }
+    }
+
+    private fun showShizukuHelp() {
+        val status = getString(
+            when (shizukuState()) {
+                ShizukuState.READY -> R.string.status_ready
+                ShizukuState.NO_PERMISSION -> R.string.status_no_permission
+                ShizukuState.OFF -> R.string.status_off
+            }
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.shizuku_help)
+            .setMessage(getString(R.string.shizuku_help_msg, status))
+            .setPositiveButton(android.R.string.ok, null)
+            .setNeutralButton(R.string.get_shizuku) { _, _ -> openShizukuInStore() }
+            .show()
+    }
+
+    /** Fallback without Shizuku: system uninstall dialog for each app, one after another. */
     private fun startBatchUninstall() {
         if (selected.isEmpty()) return
         // Keep the on-screen order.
@@ -247,6 +379,7 @@ class MainActivity : Activity() {
             isChecked = showSystem
         }
         menu.add(0, MENU_REFRESH, 3, R.string.refresh)
+        menu.add(0, MENU_SHIZUKU, 4, R.string.shizuku_help)
         return true
     }
 
@@ -272,6 +405,7 @@ class MainActivity : Activity() {
                 applyFilterAndSort()
             }
             MENU_REFRESH -> loadApps()
+            MENU_SHIZUKU -> showShizukuHelp()
             else -> return super.onOptionsItemSelected(item)
         }
         return true
@@ -325,5 +459,7 @@ class MainActivity : Activity() {
         private const val MENU_SYSTEM = 2
         private const val MENU_REFRESH = 3
         private const val MENU_SELECT_ALL = 4
+        private const val MENU_SHIZUKU = 5
+        private const val REQ_SHIZUKU = 77
     }
 }

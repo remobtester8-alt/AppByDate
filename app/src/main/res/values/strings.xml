@@ -17,4 +17,19 @@
     <string name="select_all">تحديد الكل</string>
     <string name="deleting_progress">جاري الحذف %1$d من %2$d</string>
     <string name="batch_done">خلص الحذف</string>
+    <string name="confirm_title">حذف %1$d تطبيق؟</string>
+    <string name="confirm_delete">احذف</string>
+    <string name="cancel">إلغاء</string>
+    <string name="deleting">جاري الحذف…</string>
+    <string name="batch_result">انحذف %1$d · فشل %2$d</string>
+    <string name="shizuku_off_title">Shizuku مو شغال</string>
+    <string name="shizuku_off_msg">للحذف دفعة وحدة بدون تأكيد لكل تطبيق لازم يكون تطبيق Shizuku مثبت وشغال.\n\nإذا كملت هلق، رح يطلعلك تأكيد من النظام لكل تطبيق.</string>
+    <string name="continue_anyway">كمّل مع تأكيد لكل تطبيق</string>
+    <string name="get_shizuku">نزّل Shizuku</string>
+    <string name="shizuku_denied">رفضت صلاحية Shizuku</string>
+    <string name="shizuku_help">طريقة الحذف السريع (Shizuku)</string>
+    <string name="shizuku_help_msg">1. نزّل تطبيق Shizuku من Google Play.\n2. فعّل خيارات المطور ← تصحيح الأخطاء اللاسلكي (Wireless debugging).\n3. افتح Shizuku واضغط Start عن طريق Wireless debugging واتبع خطوات الاقتران.\n4. ارجع لهون، حدد التطبيقات واضغط حذف، ووافق على صلاحية Shizuku أول مرة.\n\nبعد كل إعادة تشغيل للموبايل لازم تشغّل Shizuku من جديد.\n\nالحالة هلق: %1$s</string>
+    <string name="status_ready">جاهز ✓</string>
+    <string name="status_no_permission">شغال بس لسا ما أعطيت الصلاحية</string>
+    <string name="status_off">مو شغال ✗</string>
 </resources>

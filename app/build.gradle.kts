@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.osydev.appsbydate"
-        minSdk = 21
+        minSdk = 24
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -30,4 +30,9 @@ android {
     }
 }
 
-// No external libraries: plain Android framework only.
+dependencies {
+    // Shizuku: lets the app run `pm uninstall` with ADB-level rights,
+    // so several apps can be removed after a single confirmation.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+}
