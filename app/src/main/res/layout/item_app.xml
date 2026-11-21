@@ -9,6 +9,13 @@
     android:paddingEnd="12dp"
     android:paddingBottom="10dp">
 
+    <CheckBox
+        android:id="@+id/check"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:clickable="false"
+        android:focusable="false" />
+
     <TextView
         android:id="@+id/index"
         android:layout_width="32dp"
@@ -58,6 +65,7 @@
 
     <Button
         android:id="@+id/delete"
+        android:focusable="false"
         android:layout_width="wrap_content"
         android:layout_height="40dp"
         android:layout_marginStart="8dp"

@@ -1,29 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FFFFFF">
+    android:background="#FFFFFF"
+    android:orientation="vertical">
 
-    <ListView
-        android:id="@+id/list"
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:divider="@color/divider"
-        android:dividerHeight="1dp" />
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
-    <TextView
-        android:id="@+id/empty"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:text="@string/empty"
-        android:textColor="@color/text_secondary"
-        android:textSize="16sp"
-        android:visibility="gone" />
+        <ListView
+            android:id="@+id/list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="@color/divider"
+            android:dividerHeight="1dp" />
 
-    <ProgressBar
-        android:id="@+id/progress"
-        android:layout_width="wrap_content"
+        <TextView
+            android:id="@+id/empty"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="@string/empty"
+            android:textColor="@color/text_secondary"
+            android:textSize="16sp"
+            android:visibility="gone" />
+
+        <ProgressBar
+            android:id="@+id/progress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/selection_bar"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center" />
-</FrameLayout>
+        android:background="@color/primary"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/clear_selection"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:backgroundTint="#FFFFFF"
+            android:text="@string/clear_selection"
+            android:textColor="@color/primary" />
+
+        <Button
+            android:id="@+id/delete_selected"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:backgroundTint="@color/delete_red"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>

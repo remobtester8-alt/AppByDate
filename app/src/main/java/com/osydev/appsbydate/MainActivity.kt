@@ -20,6 +20,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.ListView
 import android.widget.ProgressBar
@@ -44,6 +45,8 @@ class MainActivity : Activity() {
     private lateinit var listView: ListView
     private lateinit var progress: ProgressBar
     private lateinit var emptyView: TextView
+    private lateinit var selectionBar: View
+    private lateinit var deleteSelectedBtn: Button
     private val adapter = AppsAdapter()
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -60,6 +63,14 @@ class MainActivity : Activity() {
     private var allApps: List<AppEntry> = emptyList()
     private var loadToken = 0
 
+    /** Package names the user ticked. */
+    private val selected = LinkedHashSet<String>()
+
+    /** Uninstall queue for "delete selected" — one system dialog per app. */
+    private val queue = ArrayDeque<String>()
+    private var batchTotal = 0
+    private var batchActive = false
+
     private val dateFormat = SimpleDateFormat("yyyy/MM/dd  HH:mm", Locale.ENGLISH)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,13 +79,30 @@ class MainActivity : Activity() {
         listView = findViewById(R.id.list)
         progress = findViewById(R.id.progress)
         emptyView = findViewById(R.id.empty)
+        selectionBar = findViewById(R.id.selection_bar)
+        deleteSelectedBtn = findViewById(R.id.delete_selected)
         listView.adapter = adapter
+
+        // Tap a row to tick / untick it.
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val pkg = adapter.items[position].packageName
+            if (!selected.add(pkg)) selected.remove(pkg)
+            adapter.notifyDataSetChanged()
+            updateSelectionBar()
+        }
+
+        deleteSelectedBtn.setOnClickListener { startBatchUninstall() }
+        findViewById<Button>(R.id.clear_selection).setOnClickListener {
+            selected.clear()
+            adapter.notifyDataSetChanged()
+            updateSelectionBar()
+        }
     }
 
-    // Reload every time we come back (e.g. after the uninstall dialog closes).
+    // Reload every time we come back (unless we're in the middle of a batch).
     override fun onResume() {
         super.onResume()
-        loadApps()
+        if (!batchActive) loadApps()
     }
 
     override fun onDestroy() {
@@ -93,6 +121,9 @@ class MainActivity : Activity() {
                 if (token != loadToken || isFinishing) return@post
                 allApps = result
                 progress.visibility = View.GONE
+                // Drop ticks for apps that no longer exist.
+                val installed = result.mapTo(HashSet()) { it.packageName }
+                selected.retainAll(installed)
                 applyFilterAndSort()
             }
         }
@@ -128,18 +159,36 @@ class MainActivity : Activity() {
         var list = if (showSystem) allApps else allApps.filter { !it.isSystem }
         list = list.sortedWith(compareBy<AppEntry> { it.installTime }.thenBy { it.label.lowercase() })
         if (!oldestFirst) list = list.reversed()
+        // Hidden apps (e.g. system apps after toggling off) shouldn't stay ticked.
+        val visible = list.mapTo(HashSet()) { it.packageName }
+        selected.retainAll(visible)
         adapter.items = list
         adapter.notifyDataSetChanged()
         emptyView.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
         title = getString(R.string.title_count, list.size)
+        updateSelectionBar()
+    }
+
+    private fun updateSelectionBar() {
+        if (selected.isEmpty()) {
+            selectionBar.visibility = View.GONE
+        } else {
+            selectionBar.visibility = View.VISIBLE
+            deleteSelectedBtn.text = getString(R.string.delete_selected, selected.size)
+        }
     }
 
     // ---------- Uninstall ----------
 
+    @Suppress("DEPRECATION")
+    private fun uninstallIntent(pkg: String): Intent =
+        Intent(Intent.ACTION_UNINSTALL_PACKAGE, Uri.parse("package:$pkg"))
+            .putExtra(Intent.EXTRA_RETURN_RESULT, true)
+
+    /** Single app (the red button on a row). */
     private fun uninstall(app: AppEntry) {
-        val intent = Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}"))
         try {
-            startActivity(intent)
+            startActivity(uninstallIntent(app.packageName))
         } catch (e: ActivityNotFoundException) {
             Toast.makeText(this, R.string.cant_delete, Toast.LENGTH_SHORT).show()
         } catch (e: SecurityException) {
@@ -147,15 +196,57 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Several apps: open the system uninstall dialog for each one, one after another. */
+    private fun startBatchUninstall() {
+        if (selected.isEmpty()) return
+        // Keep the on-screen order.
+        val order = adapter.items.map { it.packageName }.filter { it in selected }
+        queue.clear()
+        queue.addAll(order)
+        batchTotal = order.size
+        batchActive = true
+        uninstallNextInQueue()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun uninstallNextInQueue() {
+        val pkg = queue.removeFirstOrNull()
+        if (pkg == null) {
+            batchActive = false
+            Toast.makeText(this, R.string.batch_done, Toast.LENGTH_SHORT).show()
+            loadApps()
+            return
+        }
+        val done = batchTotal - queue.size
+        title = getString(R.string.deleting_progress, done, batchTotal)
+        try {
+            startActivityForResult(uninstallIntent(pkg), REQ_UNINSTALL)
+        } catch (e: Exception) {
+            Toast.makeText(this, R.string.cant_delete, Toast.LENGTH_SHORT).show()
+            uninstallNextInQueue()
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_UNINSTALL && batchActive) {
+            // Whether the user confirmed or cancelled this one, move on to the next.
+            mainHandler.postDelayed({ uninstallNextInQueue() }, 300)
+        }
+    }
+
     // ---------- Menu ----------
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(0, MENU_SORT, 0, sortLabel()).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-        menu.add(0, MENU_SYSTEM, 1, R.string.show_system).apply {
+        menu.add(0, MENU_SELECT_ALL, 1, R.string.select_all)
+        menu.add(0, MENU_SYSTEM, 2, R.string.show_system).apply {
             isCheckable = true
             isChecked = showSystem
         }
-        menu.add(0, MENU_REFRESH, 2, R.string.refresh)
+        menu.add(0, MENU_REFRESH, 3, R.string.refresh)
         return true
     }
 
@@ -169,6 +260,11 @@ class MainActivity : Activity() {
                 item.title = sortLabel()
                 applyFilterAndSort()
                 listView.setSelection(0)
+            }
+            MENU_SELECT_ALL -> {
+                adapter.items.forEach { selected.add(it.packageName) }
+                adapter.notifyDataSetChanged()
+                updateSelectionBar()
             }
             MENU_SYSTEM -> {
                 showSystem = !showSystem
@@ -184,6 +280,7 @@ class MainActivity : Activity() {
     // ---------- Adapter ----------
 
     private class Holder(v: View) {
+        val check: CheckBox = v.findViewById(R.id.check)
         val index: TextView = v.findViewById(R.id.index)
         val icon: ImageView = v.findViewById(R.id.icon)
         val name: TextView = v.findViewById(R.id.name)
@@ -206,6 +303,7 @@ class MainActivity : Activity() {
             val h = view.tag as Holder
             val app = items[position]
 
+            h.check.isChecked = app.packageName in selected
             h.index.text = (position + 1).toString()
             h.icon.setImageDrawable(app.icon)
             h.name.text = if (app.isSystem) "${app.label}  (${getString(R.string.system_app)})" else app.label
@@ -222,8 +320,10 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        private const val REQ_UNINSTALL = 42
         private const val MENU_SORT = 1
         private const val MENU_SYSTEM = 2
         private const val MENU_REFRESH = 3
+        private const val MENU_SELECT_ALL = 4
     }
 }
