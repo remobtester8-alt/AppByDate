@@ -72,6 +72,9 @@ class MainActivity : Activity() {
     private val queue = ArrayDeque<String>()
     private var batchTotal = 0
     private var batchActive = false
+    private var batchAuto = false
+    private var awaitingReturn = false
+    private var batchPackages: List<String> = emptyList()
 
     private val dateFormat = SimpleDateFormat("yyyy/MM/dd  HH:mm", Locale.ENGLISH)
 
@@ -105,10 +108,19 @@ class MainActivity : Activity() {
     // Reload every time we come back (unless we're in the middle of a batch).
     override fun onResume() {
         super.onResume()
-        if (!batchActive) loadApps()
+        if (batchActive) {
+            // Came back from an uninstall dialog → open the next one.
+            if (awaitingReturn) {
+                awaitingReturn = false
+                mainHandler.postDelayed({ uninstallNextInQueue() }, 450)
+            }
+            return
+        }
+        loadApps()
     }
 
     override fun onDestroy() {
+        AutoUninstall.active = false
         Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
         executor.shutdownNow()
         super.onDestroy()
@@ -204,23 +216,55 @@ class MainActivity : Activity() {
 
     /** "Delete selected" pressed: one confirmation, then remove everything ticked. */
     private fun onDeleteSelectedPressed() {
-        if (selected.isEmpty() || bulkRunning) return
-        when (shizukuState()) {
-            ShizukuState.READY -> confirmAndDeleteSilently()
-            ShizukuState.NO_PERMISSION -> {
-                pendingDeleteAfterPermission = true
-                Shizuku.requestPermission(REQ_SHIZUKU)
-            }
-            ShizukuState.OFF -> {
-                AlertDialog.Builder(this)
-                    .setTitle(R.string.shizuku_off_title)
-                    .setMessage(R.string.shizuku_off_msg)
-                    .setPositiveButton(R.string.continue_anyway) { _, _ -> startBatchUninstall() }
-                    .setNeutralButton(R.string.get_shizuku) { _, _ -> openShizukuInStore() }
-                    .setNegativeButton(R.string.cancel, null)
-                    .show()
-            }
+        if (selected.isEmpty() || bulkRunning || batchActive) return
+        // 1) Accessibility auto-confirm (works on any phone, no SIM / ADB needed).
+        if (AutoUninstall.isServiceEnabled(this)) {
+            confirmSelection { startBatchUninstall(auto = true) }
+            return
         }
+        // 2) Shizuku, if it's running and allowed.
+        if (shizukuState() == ShizukuState.READY) {
+            confirmAndDeleteSilently()
+            return
+        }
+        // 3) Nothing set up yet: offer to enable auto-delete, or confirm one by one.
+        AlertDialog.Builder(this)
+            .setTitle(R.string.auto_off_title)
+            .setMessage(R.string.auto_off_msg)
+            .setPositiveButton(R.string.enable_now) { _, _ -> openAccessibilitySettings() }
+            .setNeutralButton(R.string.continue_anyway) { _, _ -> startBatchUninstall(auto = false) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmSelection(onConfirm: () -> Unit) {
+        val apps = adapter.items.filter { it.packageName in selected }
+        if (apps.isEmpty()) return
+        val names = apps.joinToString("\n") { "• ${it.label}" }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.confirm_title, apps.size))
+            .setMessage(names)
+            .setPositiveButton(R.string.confirm_delete) { _, _ -> onConfirm() }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun openAccessibilitySettings() {
+        try {
+            startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        } catch (e: ActivityNotFoundException) {
+            startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
+        }
+    }
+
+    private fun showAutoHelp() {
+        val status = getString(if (AutoUninstall.isServiceEnabled(this)) R.string.auto_on else R.string.auto_off)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.auto_help)
+            .setMessage(getString(R.string.auto_help_msg, status))
+            .setPositiveButton(R.string.open_settings) { _, _ -> openAccessibilitySettings() }
+            .setNegativeButton(android.R.string.ok, null)
+            .show()
     }
 
     private enum class ShizukuState { READY, NO_PERMISSION, OFF }
@@ -328,45 +372,71 @@ class MainActivity : Activity() {
             .show()
     }
 
-    /** Fallback without Shizuku: system uninstall dialog for each app, one after another. */
-    private fun startBatchUninstall() {
+    /**
+     * Opens the system uninstall dialog for each selected app, one after another.
+     * With [auto] the accessibility service presses the confirm button by itself.
+     * The next app is opened when this screen comes back to the front (onResume),
+     * which works even on phones whose uninstaller doesn't return a result.
+     */
+    private fun startBatchUninstall(auto: Boolean) {
         if (selected.isEmpty()) return
-        // Keep the on-screen order.
         val order = adapter.items.map { it.packageName }.filter { it in selected }
         queue.clear()
         queue.addAll(order)
+        batchPackages = order
         batchTotal = order.size
         batchActive = true
+        AutoUninstall.clicks = 0
+        AutoUninstall.lastInstallerPackage = null
+        AutoUninstall.active = auto
+        batchAuto = auto
         uninstallNextInQueue()
     }
 
-    @Suppress("DEPRECATION")
     private fun uninstallNextInQueue() {
+        if (!batchActive) return
         val pkg = queue.removeFirstOrNull()
         if (pkg == null) {
-            batchActive = false
-            Toast.makeText(this, R.string.batch_done, Toast.LENGTH_SHORT).show()
-            loadApps()
+            finishBatch()
+            return
+        }
+        if (!isInstalled(pkg)) { // already gone
+            uninstallNextInQueue()
             return
         }
         val done = batchTotal - queue.size
         title = getString(R.string.deleting_progress, done, batchTotal)
         try {
-            startActivityForResult(uninstallIntent(pkg), REQ_UNINSTALL)
+            awaitingReturn = true
+            startActivity(uninstallIntent(pkg))
         } catch (e: Exception) {
-            Toast.makeText(this, R.string.cant_delete, Toast.LENGTH_SHORT).show()
+            awaitingReturn = false
             uninstallNextInQueue()
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    @Suppress("DEPRECATION")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_UNINSTALL && batchActive) {
-            // Whether the user confirmed or cancelled this one, move on to the next.
-            mainHandler.postDelayed({ uninstallNextInQueue() }, 300)
+    private fun finishBatch() {
+        batchActive = false
+        awaitingReturn = false
+        AutoUninstall.active = false
+        val ok = batchPackages.count { !isInstalled(it) }
+        val failed = batchPackages.size - ok
+        Toast.makeText(this, getString(R.string.batch_result, ok, failed), Toast.LENGTH_LONG).show()
+        if (batchAuto && ok == 0 && AutoUninstall.clicks == 0 && batchPackages.isNotEmpty()) {
+            AlertDialog.Builder(this)
+                .setMessage(getString(R.string.auto_no_click, AutoUninstall.lastInstallerPackage ?: "?"))
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
         }
+        loadApps()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isInstalled(pkg: String): Boolean = try {
+        packageManager.getPackageInfo(pkg, 0)
+        true
+    } catch (e: PackageManager.NameNotFoundException) {
+        false
     }
 
     // ---------- Menu ----------
@@ -379,7 +449,8 @@ class MainActivity : Activity() {
             isChecked = showSystem
         }
         menu.add(0, MENU_REFRESH, 3, R.string.refresh)
-        menu.add(0, MENU_SHIZUKU, 4, R.string.shizuku_help)
+        menu.add(0, MENU_AUTO, 4, R.string.auto_help)
+        menu.add(0, MENU_SHIZUKU, 5, R.string.shizuku_help)
         return true
     }
 
@@ -405,6 +476,7 @@ class MainActivity : Activity() {
                 applyFilterAndSort()
             }
             MENU_REFRESH -> loadApps()
+            MENU_AUTO -> showAutoHelp()
             MENU_SHIZUKU -> showShizukuHelp()
             else -> return super.onOptionsItemSelected(item)
         }
@@ -454,12 +526,12 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        private const val REQ_UNINSTALL = 42
         private const val MENU_SORT = 1
         private const val MENU_SYSTEM = 2
         private const val MENU_REFRESH = 3
         private const val MENU_SELECT_ALL = 4
         private const val MENU_SHIZUKU = 5
+        private const val MENU_AUTO = 6
         private const val REQ_SHIZUKU = 77
     }
 }

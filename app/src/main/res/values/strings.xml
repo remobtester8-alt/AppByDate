@@ -32,4 +32,15 @@
     <string name="status_ready">جاهز ✓</string>
     <string name="status_no_permission">شغال بس لسا ما أعطيت الصلاحية</string>
     <string name="status_off">مو شغال ✗</string>
+    <string name="a11y_label">الحذف التلقائي – تطبيقاتي حسب التاريخ</string>
+    <string name="a11y_description">بيضغط زر التأكيد بنافذة حذف التطبيقات بشكل تلقائي، بس لما تبدأ إنت \"حذف المحدد\" من التطبيق. ما بيقرأ ولا بيضغط أي شي تاني.</string>
+    <string name="auto_off_title">الحذف التلقائي مو مفعّل</string>
+    <string name="auto_off_msg">لحتى ينحذفوا كلهن بضغطة وحدة، فعّل خدمة \"الحذف التلقائي\" من إعدادات إمكانية الوصول (مرة وحدة بس).\n\nأو كمّل هلق وأكّد كل تطبيق لحالو.</string>
+    <string name="enable_now">فعّلها هلق</string>
+    <string name="auto_help">تفعيل الحذف التلقائي</string>
+    <string name="auto_help_msg">1. اضغط \"افتح الإعدادات\".\n2. ادخل على التطبيقات المثبتة (Downloaded apps) ← \"الحذف التلقائي – تطبيقاتي حسب التاريخ\" وفعّله.\n\nإذا الخيار رمادي وما بيتفعّل (إعداد مقيّد):\n• روح على الإعدادات ← التطبيقات ← تطبيقاتي حسب التاريخ\n• اضغط ⋮ فوق ← \"السماح بالإعدادات المقيدة\"\n• ارجع وفعّل الخدمة.\n\nالحالة هلق: %1$s</string>
+    <string name="open_settings">افتح الإعدادات</string>
+    <string name="auto_on">مفعّل ✓</string>
+    <string name="auto_off">مو مفعّل ✗</string>
+    <string name="auto_no_click">ما قدرت اضغط زر التأكيد تلقائياً.\nاسم شاشة الحذف بموبايلك: %1$s\nابعت هالاسم ليتصلّح.</string>
 </resources>
