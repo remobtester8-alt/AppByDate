@@ -2,6 +2,8 @@ package com.osydev.appsbydate
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.DatePickerDialog
+import java.util.Calendar
 import rikka.shizuku.Shizuku
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -72,6 +74,13 @@ class MainActivity : Activity() {
     private val queue = ArrayDeque<String>()
     private var batchTotal = 0
     private var batchActive = false
+
+    /** Optional install-date range (inclusive, local time). */
+    private var rangeFrom: Long? = null
+    private var rangeTo: Long? = null
+    private lateinit var rangeBar: View
+    private lateinit var rangeText: TextView
+    private val dayFormat = SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH)
     private var batchAuto = false
     private var awaitingReturn = false
     private var batchPackages: List<String> = emptyList()
@@ -97,6 +106,15 @@ class MainActivity : Activity() {
         }
 
         deleteSelectedBtn.setOnClickListener { onDeleteSelectedPressed() }
+        rangeBar = findViewById(R.id.range_bar)
+        rangeText = findViewById(R.id.range_text)
+        findViewById<Button>(R.id.range_change).setOnClickListener { pickDateRange() }
+        findViewById<Button>(R.id.range_clear).setOnClickListener {
+            rangeFrom = null
+            rangeTo = null
+            selected.clear()
+            applyFilterAndSort()
+        }
         Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
         findViewById<Button>(R.id.clear_selection).setOnClickListener {
             selected.clear()
@@ -173,6 +191,15 @@ class MainActivity : Activity() {
 
     private fun applyFilterAndSort() {
         var list = if (showSystem) allApps else allApps.filter { !it.isSystem }
+        val from = rangeFrom
+        val to = rangeTo
+        if (from != null && to != null) {
+            list = list.filter { it.installTime in from..to }
+            rangeBar.visibility = View.VISIBLE
+            rangeText.text = getString(R.string.range_label, dayFormat.format(Date(from)), dayFormat.format(Date(to)))
+        } else {
+            rangeBar.visibility = View.GONE
+        }
         list = list.sortedWith(compareBy<AppEntry> { it.installTime }.thenBy { it.label.lowercase() })
         if (!oldestFirst) list = list.reversed()
         // Hidden apps (e.g. system apps after toggling off) shouldn't stay ticked.
@@ -211,6 +238,55 @@ class MainActivity : Activity() {
             Toast.makeText(this, R.string.cant_delete, Toast.LENGTH_SHORT).show()
         }
     }
+
+    // ---------- Date range ----------
+
+    /** Pick "from" then "to" dates; show only apps installed in that range and tick them all. */
+    private fun pickDateRange() {
+        val visible = if (showSystem) allApps else allApps.filter { !it.isSystem }
+        val defaultFrom = rangeFrom ?: visible.minOfOrNull { it.installTime } ?: System.currentTimeMillis()
+        val defaultTo = rangeTo ?: System.currentTimeMillis()
+
+        showDatePicker(getString(R.string.pick_from), defaultFrom) { fromCal ->
+            showDatePicker(getString(R.string.pick_to), maxOf(defaultTo, fromCal.timeInMillis)) { toCal ->
+                var start = startOfDay(fromCal)
+                var end = endOfDay(toCal)
+                if (start > end) { // picked backwards → swap
+                    start = startOfDay(toCal)
+                    end = endOfDay(fromCal)
+                }
+                rangeFrom = start
+                rangeTo = end
+                selected.clear()
+                applyFilterAndSort()
+                adapter.items.forEach { selected.add(it.packageName) }
+                adapter.notifyDataSetChanged()
+                updateSelectionBar()
+                listView.setSelection(0)
+                Toast.makeText(this, getString(R.string.range_selected, selected.size), Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showDatePicker(title: String, initial: Long, onPicked: (Calendar) -> Unit) {
+        val c = Calendar.getInstance().apply { timeInMillis = initial }
+        DatePickerDialog(
+            this,
+            { _, y, m, d -> onPicked(Calendar.getInstance().apply { clear(); set(y, m, d) }) },
+            c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH),
+        ).apply {
+            setTitle(title)
+            show()
+        }
+    }
+
+    private fun startOfDay(c: Calendar): Long = (c.clone() as Calendar).apply {
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    private fun endOfDay(c: Calendar): Long = (c.clone() as Calendar).apply {
+        set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999)
+    }.timeInMillis
 
     // ---------- Bulk delete ----------
 
@@ -443,6 +519,7 @@ class MainActivity : Activity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(0, MENU_SORT, 0, sortLabel()).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        menu.add(0, MENU_RANGE, 1, R.string.pick_range)
         menu.add(0, MENU_SELECT_ALL, 1, R.string.select_all)
         menu.add(0, MENU_SYSTEM, 2, R.string.show_system).apply {
             isCheckable = true
@@ -477,6 +554,7 @@ class MainActivity : Activity() {
             }
             MENU_REFRESH -> loadApps()
             MENU_AUTO -> showAutoHelp()
+            MENU_RANGE -> pickDateRange()
             MENU_SHIZUKU -> showShizukuHelp()
             else -> return super.onOptionsItemSelected(item)
         }
@@ -532,6 +610,7 @@ class MainActivity : Activity() {
         private const val MENU_SELECT_ALL = 4
         private const val MENU_SHIZUKU = 5
         private const val MENU_AUTO = 6
+        private const val MENU_RANGE = 7
         private const val REQ_SHIZUKU = 77
     }
 }

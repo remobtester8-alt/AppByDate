@@ -43,4 +43,11 @@
     <string name="auto_on">مفعّل ✓</string>
     <string name="auto_off">مو مفعّل ✗</string>
     <string name="auto_no_click">ما قدرت اضغط زر التأكيد تلقائياً.\nاسم شاشة الحذف بموبايلك: %1$s\nابعت هالاسم ليتصلّح.</string>
+    <string name="pick_range">تحديد حسب التاريخ 📅</string>
+    <string name="pick_from">من تاريخ</string>
+    <string name="pick_to">لحد تاريخ</string>
+    <string name="range_label">من %1$s لـ %2$s</string>
+    <string name="range_change">تغيير</string>
+    <string name="range_clear">عرض الكل</string>
+    <string name="range_selected">تحدد %1$d تطبيق بهالفترة</string>
 </resources>
