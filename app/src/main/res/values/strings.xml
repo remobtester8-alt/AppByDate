@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">تطبيقاتي حسب التاريخ</string>
+    <string name="title_count">%1$d تطبيق</string>
+    <string name="delete">حذف</string>
+    <string name="installed_on">مثبت: %1$s</string>
+    <string name="updated_on">آخر تحديث: %1$s</string>
+    <string name="sort_oldest">الأقدم أولاً</string>
+    <string name="sort_newest">الأحدث أولاً</string>
+    <string name="show_system">إظهار تطبيقات النظام</string>
+    <string name="refresh">تحديث القائمة</string>
+    <string name="empty">ما في تطبيقات</string>
+    <string name="cant_delete">ما قدرت افتح شاشة الحذف لهالتطبيق</string>
+    <string name="system_app">نظام</string>
+</resources>

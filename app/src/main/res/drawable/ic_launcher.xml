@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple vector icon: navy rounded square with a white list and an orange clock dot -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#1E2A44"
+        android:pathData="M10,2h28a8,8 0 0 1 8,8v28a8,8 0 0 1 -8,8h-28a8,8 0 0 1 -8,-8v-28a8,8 0 0 1 8,-8z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M11,13h20v4h-20z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M11,22h16v4h-16z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M11,31h12v4h-12z" />
+    <path
+        android:fillColor="#F28C28"
+        android:pathData="M35,27a7,7 0 1 1 0,14a7,7 0 1 1 0,-14z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,30h2v4.5h3v2h-5z" />
+</vector>
